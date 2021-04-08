@@ -69,6 +69,13 @@ extern NSString *const SRHTTPResponseErrorKey;
 @interface SRWebSocket : NSObject <NSStreamDelegate>
 
 /**
+ 是否禁用 Nagle 属性，如果为 YES 则禁用，默认为不禁用
+
+ 该属性只有在 open 被调用之前设置才能保证生效，后续修改不保证生效
+ */
+@property (nonatomic, assign) BOOL noDelayTCP;
+
+/**
  The delegate of the web socket.
 
  The web socket delegate is notified on all state changes that happen to the web socket.

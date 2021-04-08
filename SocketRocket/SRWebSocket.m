@@ -19,8 +19,9 @@
 #import <unicode/utf8.h>
 #endif
 
+#import <arpa/inet.h>
 #import <libkern/OSAtomic.h>
-
+ 
 #import "SRDelegateController.h"
 #import "SRIOConsumer.h"
 #import "SRIOConsumerPool.h"
@@ -39,6 +40,8 @@
 #import "NSURLRequest+SRWebSocketPrivate.h"
 #import "NSRunLoop+SRWebSocketPrivate.h"
 #import "SRConstants.h"
+
+#include <netinet/tcp.h>
 
 #if !__has_feature(objc_arc)
 #error SocketRocket must be compiled with ARC enabled
@@ -1434,6 +1437,10 @@ static const size_t SRFrameHeaderOverhead = 32;
     switch (eventCode) {
         case NSStreamEventOpenCompleted: {
             SRDebugLog(@"NSStreamEventOpenCompleted %@", aStream);
+            // 判断是否使用 Nagle
+            if (_noDelayTCP) {
+                [self _disableNaglesAlgorithmForStream:aStream];
+            }
             if (self.readyState >= SR_CLOSING) {
                 return;
             }
@@ -1556,6 +1563,38 @@ static const size_t SRFrameHeaderOverhead = 32;
 - (NSOperationQueue *_Nullable)delegateOperationQueue
 {
     return self.delegateController.operationQueue;
+}
+
+- (void)_disableNaglesAlgorithmForStream:(NSStream *)stream {
+
+    CFDataRef socketData = NULL;
+
+    // Get socket data
+    if ([stream isKindOfClass:[NSOutputStream class]]) {
+        socketData = CFWriteStreamCopyProperty((__bridge CFWriteStreamRef)((NSOutputStream *)stream), kCFStreamPropertySocketNativeHandle);
+    } else if ([stream isKindOfClass:[NSInputStream class]]) {
+        socketData = CFReadStreamCopyProperty((__bridge CFReadStreamRef)((NSInputStream *)stream), kCFStreamPropertySocketNativeHandle);
+    }
+
+
+    // get a handle to the native socket
+    CFSocketNativeHandle *rawsock = (CFSocketNativeHandle *)CFDataGetBytePtr(socketData);
+    // Disable Nagle's algorythm
+    static const int kOne = 1;
+    int err = setsockopt(*rawsock, IPPROTO_TCP, TCP_NODELAY, &kOne, sizeof(kOne));
+    if (socketData) {
+        CFRelease(socketData);
+    }
+
+
+    // Debug info
+    BOOL isInput = [stream isKindOfClass:[NSInputStream class]];
+    NSString * streamType = isInput ? @"INPUT" : @"OUTPUT";
+    if (err < 0) {
+        SRDebugLog(@"Could Not Disable Nagle for %@ stream", streamType);
+    } else {
+        SRDebugLog(@"Nagle Is Disabled for %@ stream", streamType);
+    }
 }
 
 @end
