@@ -464,14 +464,18 @@ static NSTimeInterval const SRProxyConnectWriteTimeout = 5.0;
         if (!outStream) {
             return;
         }
+        // FIXME: 执行到循环后如果timeout，将死循环无法跳出，最终导致内存爆炸💥
+        // 修复后的逻辑是如果超时或者出错则直接返回
         while (![outStream hasSpaceAvailable]) {
             usleep(100); //wait until the socket is ready
             timeout -= 100;
             if (timeout < 0) {
                 NSError *error = SRHTTPErrorWithCodeDescription(408, 2132, @"Proxy timeout");
                 [sself _failWithError:error];
+                return;
             } else if (outStream.streamError != nil) {
                 [sself _failWithError:outStream.streamError];
+                return;
             }
         }
         [outStream write:bytes maxLength:data.length];
